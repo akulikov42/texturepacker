@@ -1,0 +1,36 @@
+plugins {
+    id "org.jetbrains.kotlin.jvm" version "1.3.72"
+    id "application"
+}
+
+group = 'org.neakmobi.texturepacker'
+version = '0.01'
+
+repositories {
+    jcenter()
+    flatDir {
+        dirs 'libs'
+    }
+}
+
+application {
+    mainClass = "texturepacker.PackerApplicationKt"
+}
+
+kotlin {
+    sourceSets {
+        main.kotlin.srcDirs += 'src/main/kotlin'
+        test.kotlin.srcDirs += 'src/test/kotlin'
+    }
+    dependencies {
+        implementation "org.jetbrains.kotlin:kotlin-stdlib"
+        implementation 'org.neakmobi.argsparser:argsparser:0.1'
+        testImplementation "org.jetbrains.kotlin:kotlin-test-junit"
+    }
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'org.texturepacker.PackerApplicationKt'
+    }
+}
