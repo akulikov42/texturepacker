@@ -13,10 +13,6 @@ repositories {
     }
 }
 
-application {
-    mainClass = "texturepacker.PackerApplicationKt"
-}
-
 kotlin {
     sourceSets {
         main.kotlin.srcDirs += 'src/main/kotlin'
@@ -31,6 +27,10 @@ kotlin {
 
 jar {
     manifest {
-        attributes 'Main-Class': 'org.texturepacker.PackerApplicationKt'
+        attributes 'Main-Class': 'texturepacker.PackerApplicationKt'
+    }
+
+    from {
+        configurations.compileClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
 }

@@ -22,8 +22,8 @@ class PackerConfiguration {
         private const val HELP_CONCLUSION  = "Enjoy!"
         private const val DESCRIPTION_INDENT = 30
 
-        private const val MAX_DEPTH_SRC     = 7
-        private const val DEFAULT_DEPTH_SRC = 1
+        private const val MAX_SEARCH_DEPTH     = 7
+        private const val DEFAULT_SEARCH_DEPTH = 1
 
     }
 
@@ -35,19 +35,19 @@ class PackerConfiguration {
             helpUsage = HELP_USAGE,
             helpPreamble = HELP_PREAMBLE,
             helpConclusion = HELP_CONCLUSION,
-            descriptionIndent = DESCRIPTION_INDENT,
-            applyParams = this::collectImagesFromParams
-    )
+            descriptionIndent = DESCRIPTION_INDENT
+    ) { arr -> arr.isEmpty() }
 
     var atlasWidth      = DEFAULT_RESOLUTION
     var atlasHeight     = DEFAULT_RESOLUTION
     var atlasMargin     = DEFAULT_MARGIN
     var atlasName       = DEFAULT_ATLAS_NAME
     var descriptionName = DEFAULT_DESCRIPTION_NAME
-    var srcDepth        = DEFAULT_DEPTH_SRC
-    var forceSkip       = false
-    var helpRequested   = false
     var srcImgList      = mutableListOf<File>()
+
+    private var helpRequested   = false
+    private var searchDepth = DEFAULT_SEARCH_DEPTH
+
 
     /**
      * Опция с шириной атласа
@@ -105,37 +105,26 @@ class PackerConfiguration {
             "--inputDir",
             "Directory which contain sources (.png)",
             1,
-            false,
-            "Usage: --inputDir <PATH_TO_DIR> <DEPTH>\n  <PATH_TO_DIR> - path to directory\n  <DEPTH> - search depth.\n",
-            2,
+            true,
+            "Usage: --inputDir <PATH_TO_DIR>\n  <PATH_TO_DIR> - path to directory\n",
             this::collectImagesFromPath
     )
 
 
     /**
-     * Опция с входными файлами
+     * Опция с глубиной поиска
      */
-    private val inputFilesOption = UnfixParamsOption(
-            "-s",
-            "--srcImages",
-            "Images which will be packed",
-            1,
-            false,
-            "Usage: --srcImages <PATH_TO_IMG_1> ... <PATH_TO_IMG_n>\n  <PATH_TO_IMG_i> - path to image #i\n  Images will be read before next option\n",
-            this::collectImagesFromList
-    )
-
-
-    /**
-     * Опция указывающая, надо ли игнорировать предупреждения
-     */
-    private val forceSkipOption = Key(
-            "-f",
-            "--forceSkip",
-            "Force pack. Skip warnings. Not more.",
+    private val searchDepthOption = FixParamsOption(
+            "-d",
+            "--depth",
+            "Depth for search source files",
             0,
-            false
-    ) { forceSkip = true; true }
+            false,
+            "Usage: --depth [$DEFAULT_SEARCH_DEPTH..$MAX_SEARCH_DEPTH]"
+    ) { str ->
+        searchDepth = if(str.toInt() !in DEFAULT_SEARCH_DEPTH..MAX_SEARCH_DEPTH) DEFAULT_SEARCH_DEPTH else str.toInt()
+        true
+    }
 
 
     /**
@@ -184,11 +173,10 @@ class PackerConfiguration {
         clParser.addOption(heightOption)
         clParser.addOption(marginOption)
         clParser.addOption(inputDirOption)
-        clParser.addOption(inputFilesOption)
         clParser.addOption(atlasNameOption)
         clParser.addOption(descriptionNameOption)
+        clParser.addOption(searchDepthOption)
         clParser.addOption(helpOption)
-        clParser.addOption(forceSkipOption)
         helpOption.help = "      ${"--help".padEnd(DESCRIPTION_INDENT)} - Show help message"
 
     }
@@ -196,125 +184,26 @@ class PackerConfiguration {
 
     /**
      *
-     * Сбор изображений из списка файлов в параметрах программы (все, что не опция)
-     *
-     * @param params Параметры программы
-     *
-     * @return true - в них содержатся изображения, false - изображений нет.
-     *
-     */
-    private fun collectImagesFromParams(params: Array<String>): Boolean {
-
-        if(inputDirOption.applied || inputFilesOption.applied) {
-            if(params.isNotEmpty()) {
-                println("Error! Unexpected program params!\nSee texturepacker --help for more information")
-                return false
-            }
-            return true
-        }
-
-        if(params.isEmpty()) {
-            println("Error! No input files!")
-            return false
-        }
-
-        val collectedImages = mutableListOf<File>()
-        var currFile: File
-        params.forEach { param ->
-            currFile = File(param)
-            if(currFile.isFile && supportedFormat(currFile.name.substringAfterLast('.')))
-                collectedImages.add(currFile)
-            else {
-                println("Error! Invalid input files!")
-                return false
-            }
-        }
-
-        if(collectedImages.isNotEmpty()) {
-            srcImgList.addAll(collectedImages)
-            return true
-        }
-
-        println("Error! Input files doesn't contain images!")
-        return false
-
-    }
-
-    /**
-     *
-     * Сбор изображений из списка файлов, полученных с опции [inputFilesOption]
-     *
-     * @param params Список файлов
-     *
-     * @return true - изображения есть или можно пропустить
-     *
-     */
-    private fun collectImagesFromList(params: Array<String>): Boolean {
-
-        if(params.isEmpty() && !forceSkip) return inputFilesOption.errMsg("Option without params!")
-
-        val collectedImages = mutableListOf<File>()
-        var currFile: File
-        for(param in params) {
-            currFile = File(param)
-            if(currFile.isFile && supportedFormat(currFile.name.substringAfterLast('.')))
-                collectedImages.add(currFile)
-            else if(!forceSkip) return inputFilesOption.errMsg("${currFile.name} - its not image!")
-        }
-
-        if(collectedImages.isNotEmpty()) {
-            srcImgList.addAll(collectedImages)
-            return true
-        }
-
-        if(forceSkip) return true
-
-        return inputFilesOption.errMsg("All params - is not images!")
-    }
-
-    /**
-     *
      * Проверка директории и взятие из нее изображений (опция [inputDirOption])
      *
-     * @param params По идее: params[0] - путь до директории, params[1] - глубина поиска
+     * @param pathToDir Путь до директории с исходниками
      *
-     * @return true - изображения есть, false - изображений нет или можно пропустить.
+     * @return true - изображения есть, false - изображений нет.
      *
      */
-    private fun collectImagesFromPath(params: Array<String>): Boolean {
-
-        // Проверка числа параметров
-        if(params.size != 2) {
-            if(params.size == 1 && forceSkip) srcDepth = DEFAULT_DEPTH_SRC else return inputDirOption.errMsg("Invalid params!")
-        } else {
-            // Проверка "глубины" поиска исходных изображений
-            srcDepth = params[1].toInt()
-            if(srcDepth !in DEFAULT_DEPTH_SRC..MAX_DEPTH_SRC) {
-                if(forceSkip)
-                    srcDepth = DEFAULT_DEPTH_SRC
-                else
-                    return inputDirOption.errMsg("Depth must be in [$DEFAULT_DEPTH_SRC..$MAX_DEPTH_SRC]!")
-            }
-        }
+    private fun collectImagesFromPath(pathToDir: String): Boolean {
 
         // Проверка пути
-        val pathToDir = params[0]
         val inputDir  = File(pathToDir)
-        if((!inputDir.exists() || !inputDir.isDirectory) && !forceSkip)
+        if(!inputDir.exists() || !inputDir.isDirectory)
             return inputDirOption.errMsg("\'$pathToDir\' doesn't exist or not directory!")
 
         // Сбор файлов .png
-        val collectedFiles = selectImages(inputDir.listFiles(), srcDepth)
+        collectImages(inputDir, srcImgList, searchDepth)
+        if(srcImgList.isNotEmpty()) return true
 
-        // Были ли файлы то?
-        if(collectedFiles.isNotEmpty()) {
-            srcImgList.addAll(collectedFiles)
-            return true
-        }
-
-        // Если можно забить - забиваем.
-        if(forceSkip) return true
-        return inputDirOption.errMsg("$pathToDir doesn't contain .png files!")
+        // Если изображений нет, то выводим соответствующее сообщение
+        return inputDirOption.errMsg("$pathToDir doesn't contain .png files! Search depth: $searchDepth")
 
     }
 
@@ -323,42 +212,52 @@ class PackerConfiguration {
      *
      * Выбор из каталога всех файлов "поддерживаемых форматов" (.png)
      *
-     * @param files Файлы, с которых начинается отбор
+     * @param dir Директория для поиска
      * @param depth Максимальная глубина поиска. При depth = 1 переход во вложенные каталоги не производится
-     *
-     * @return Список файлов-изображений поддерживаемого формата (.png)
+     * @param outImgList Список с собранным файлами изображений
      *
      */
-    private fun selectImages(files: Array<File>?, depth: Int = 1): MutableList<File> {
+    @Suppress("RECEIVER_NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
+    private fun collectImages(dir: File?, outImgList: MutableList<File>, depth: Int = 1) {
 
-        val outImgList = mutableListOf<File>()
-        if(files.isNullOrEmpty())
-            return outImgList
+        // Проверяем условия выхода из рекурсии
+        if(depth == 0 || dir == null || !dir.isDirectory)
+            return
 
+        // Собираем изображения из текущей директории и собираем список вложенных директорий
         val dirsInPath = mutableListOf<File>()
-        var currDepth = 0
-        do {
-            files.forEach { file ->
-                if(file.isFile && supportedFormat(file.name.substringAfterLast('.')))
-                    outImgList.add(file)
-                if(file.isDirectory)
-                    dirsInPath.add(file)
-            }
-            currDepth++
-        } while(currDepth != depth)
+        dir.listFiles().forEach {  currFile ->
+            if(currFile.isFile && supportedImage(currFile))
+                outImgList.add(currFile)
+            if(currFile.isDirectory)
+                dirsInPath.add(currFile)
+        }
 
-        return outImgList
+        // Для каждой директории вызываем функцию сбора изображений
+        dirsInPath.forEach { currDir ->
+            collectImages(currDir, outImgList, depth - 1)
+        }
 
     }
-
-
-    private fun supportedFormat(format: String): Boolean {
-        return format == "png"
-    }
-
 
     /**
+     * Проверка формата
+     *
+     * p.s. Потом надо его заменить на проверку заголовка файла, а не только имени
+     *
+     */
+    private fun supportedImage(file: File): Boolean {
+       val format = file.name.substringAfterLast('.')
+       if(format == "png")
+           return true
+       return false
+
+    }
+
+    /**
+     *
      * Подсказка по использованию пакера
+     *
      */
     fun helpMsg() = clParser.buildHelp()
 
@@ -373,14 +272,22 @@ class PackerConfiguration {
      *
      */
     fun setConfFromCL(args: Array<String>): Boolean {
-
-        if(clParser.parseArgs(args) != ParseResult.OK)
-            return false
-
-        return true
-
+        return when(clParser.parseArgs(args)) {
+            ParseResult.MISSING_REQUIRED_OPTIONS -> {
+                if(helpRequested) {
+                    println(helpMsg())
+                    return false
+                }
+                inputDirOption.errMsg("Input directory should be defined!")
+                false
+            }
+            ParseResult.OK -> {
+                true
+            }
+            else -> {
+                println(helpMsg())
+                false
+            }
+        }
     }
-
-
-
 }
