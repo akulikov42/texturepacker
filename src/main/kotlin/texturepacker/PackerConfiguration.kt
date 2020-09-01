@@ -1,6 +1,6 @@
 package texturepacker
 
-import argsparser.*
+import kargsparser.*
 import java.io.File
 
 class PackerConfiguration {
@@ -30,7 +30,7 @@ class PackerConfiguration {
     /**
      * Парсер аргументов командной строки
      */
-    private val clParser = ArgsParser(
+    private val clParser = KArgsParser(
             programInfo = PROGRAM_INFO,
             helpUsage = HELP_USAGE,
             helpPreamble = HELP_PREAMBLE,
